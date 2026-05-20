@@ -102,6 +102,16 @@ pixi run -- myst start
 
 Then open [http://localhost:3000](http://localhost:3000).
 
+## Deploying to GitHub Pages
+
+The workflow at [.github/workflows/deploy.yml](.github/workflows/deploy.yml) builds the static site with `myst build --html` and publishes `_build/html/` to GitHub Pages on every push to `main` (and on manual dispatch).
+
+One-time setup in the GitHub repo: **Settings → Pages → Build and deployment → Source: "GitHub Actions"**.
+
+The workflow sets `BASE_URL: /test-mystmd-deckgl-raster` so internal links work under the GitHub Pages subpath. If you fork the repo under a different name, update that value in the workflow.
+
+The viewer works on Pages without any extra static-file handling because the entire viewer is embedded as a `data:` URL in the article HTML (see [How it works](#how-it-works)).
+
 ## Files
 
 | Path | Purpose |
