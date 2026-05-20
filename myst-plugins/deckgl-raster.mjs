@@ -10,6 +10,7 @@ const directive = {
   arg: { type: String, doc: "URL to a COG" },
   options: {
     height: { type: String },
+    echo: { type: Boolean, doc: "Also render the directive source as a code block." },
   },
   run(data) {
     let parsed;
@@ -29,12 +30,20 @@ const directive = {
     const cogUrlLiteral = JSON.stringify(cogUrl).replace(/</g, "\\u003c");
     const html = viewerTemplate.replaceAll("__COG_URL__", cogUrlLiteral);
     const b64 = Buffer.from(html, "utf8").toString("base64");
-    return [{
+    const nodes = [{
       type: "iframe",
       src: `data:text/html;base64,${b64}`,
       width: "100%",
       height,
     }];
+    if (data.options?.echo) {
+      const optionLines = Object.entries(data.options)
+        .filter(([k, v]) => k !== "echo" && v != null && v !== false)
+        .map(([k, v]) => `:${k}: ${v}`);
+      const source = ["```{deckgl-raster} " + cogUrl, ...optionLines, "```"].join("\n");
+      nodes.unshift({ type: "code", lang: "markdown", value: source });
+    }
+    return nodes;
   },
 };
 
