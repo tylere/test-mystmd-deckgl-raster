@@ -4,11 +4,11 @@ Render Cloud-Optimized GeoTIFFs (COGs) inline in a [MyST Markdown](https://mystm
 
 ## Usage
 
-```myst
+````markdown
 ```{deckgl-raster} https://example.com/path/to/cog.tif
 :height: 600
 ```
-```
+````
 
 The directive takes the COG URL as its argument and one optional option (`height`, in px or a CSS value).
 
