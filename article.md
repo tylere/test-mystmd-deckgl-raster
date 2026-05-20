@@ -19,3 +19,14 @@
   "height": 600
 }
 ```
+
+<div style="height: 3em"></div>
+
+## Test CRS EPSG:2193
+
+```{anywidget} ./widgets/cog-viewer.mjs
+{
+  "url": "https://nz-imagery.s3-ap-southeast-2.amazonaws.com/new-zealand/new-zealand_2024-2025_10m/rgb/2193/CC11.tiff",
+  "height": 600
+}
+```
