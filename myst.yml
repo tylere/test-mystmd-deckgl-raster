@@ -8,6 +8,8 @@ project:
   # authors: []
   github: https://github.com/tylere/test-mystmd-deckgl-raster
   # To autogenerate a Table of Contents, run "myst init --write-toc"
+  plugins:
+    - myst-plugins/deckgl-raster.mjs
 site:
   template: book-theme
   # options:
