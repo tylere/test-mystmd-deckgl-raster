@@ -246,12 +246,30 @@ function projectedTileLayer({ main, levels, samplesPerPixel, nodata, epsg }) {
 }
 
 async function render({ model, el }) {
-  const url = model.get("url");
+  const initialUrl = model.get("url");
   const height = Number(model.get("height")) || 500;
+  const listen = model.get("listen") ?? null;
 
-  if (!url) {
-    el.textContent = "cog-viewer: missing 'url' parameter.";
-    return;
+  // Subscribe synchronously — before any `await` — so we don't miss a live
+  // event from a sibling selector. Events that arrive during async init are
+  // buffered into `pendingUrl` and consumed once setup completes. We also
+  // check the selector's latest-value global as a fallback for the case where
+  // the selector mounted (and fired) before we got here.
+  let pendingUrl = initialUrl ?? null;
+  if (listen && !pendingUrl) {
+    const stashed = window.__cogSelectorLatest?.[listen];
+    if (typeof stashed === "string" && stashed) pendingUrl = stashed;
+  }
+  let ready = false;
+  let onEvent = null;
+  if (listen) {
+    onEvent = (e) => {
+      const url = e?.detail?.url;
+      if (typeof url !== "string" || !url) return;
+      if (ready) loadCog(url);
+      else pendingUrl = url;
+    };
+    window.addEventListener(listen, onEvent);
   }
 
   // Container + status banner inside the shadow root.
@@ -273,67 +291,96 @@ async function render({ model, el }) {
     padding: "6px 8px", borderRadius: "4px", maxWidth: "80%",
     whiteSpace: "pre-wrap",
   });
-  status.textContent = "Loading…";
+  status.textContent = listen ? "Waiting for selection…" : "Loading…";
   el.appendChild(status);
-  const setStatus = (msg) => { status.textContent = msg; };
-  const fail = (msg) => {
+  const setStatus = (msg) => {
+    status.style.background = "rgba(255,255,255,0.9)";
+    status.style.color = "";
+    status.textContent = msg;
+    if (!el.contains(status)) el.appendChild(status);
+  };
+  const showError = (msg) => {
+    if (!el.contains(status)) el.appendChild(status);
     status.style.background = "#fee";
     status.style.color = "#900";
     status.textContent = String(msg);
-    throw new Error(msg);
   };
 
-  let map;
-  try {
-    setStatus(`Probing COG: ${url}`);
-    const tiff = await fromUrl(url);
-    const main = await tiff.getImage(0);
-    const geoKeys = main.getGeoKeys() ?? {};
-    const epsg = geoKeys.ProjectedCSTypeGeoKey || geoKeys.GeographicTypeGeoKey || 4326;
-    const isGeographic = !geoKeys.ProjectedCSTypeGeoKey;
-    const samplesPerPixel = main.getSamplesPerPixel();
-    const nodata = main.getGDALNoData();
-    const mainBbox = main.getBoundingBox();
-    const levels = await indexLevels(tiff, main.getWidth());
+  let currentMap = null;
+  // Monotonic counter so a slow-loading old request can't stomp on a newer one.
+  let loadSeq = 0;
 
-    if (!isGeographic) {
-      const ps = projStr(epsg);
-      if (!ps) fail(`Unsupported EPSG:${epsg}. Add a proj4 string to projStr().`);
-      proj4.defs(`EPSG:${epsg}`, ps);
+  async function loadCog(url) {
+    const seq = ++loadSeq;
+    // Tear down any previous map in the same container.
+    if (currentMap) {
+      try { currentMap.remove(); } catch { /* ignore */ }
+      currentMap = null;
     }
 
-    map = new maplibregl.Map({
-      container: mapDiv,
-      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-      center: [0, 0],
-      zoom: 1,
-    });
-    await new Promise((r) => map.on("load", r));
+    try {
+      setStatus(`Probing COG: ${url}`);
+      const tiff = await fromUrl(url);
+      if (seq !== loadSeq) return; // a newer load started while we were probing
+      const main = await tiff.getImage(0);
+      const geoKeys = main.getGeoKeys() ?? {};
+      const epsg = geoKeys.ProjectedCSTypeGeoKey || geoKeys.GeographicTypeGeoKey || 4326;
+      const isGeographic = !geoKeys.ProjectedCSTypeGeoKey;
+      const samplesPerPixel = main.getSamplesPerPixel();
+      const nodata = main.getGDALNoData();
+      const mainBbox = main.getBoundingBox();
+      const levels = await indexLevels(tiff, main.getWidth());
+      if (seq !== loadSeq) return;
 
-    const layer = isGeographic
-      ? geographicTileLayer({ main, levels, samplesPerPixel, nodata })
-      : projectedTileLayer({ main, levels, samplesPerPixel, nodata, epsg });
+      if (!isGeographic) {
+        const ps = projStr(epsg);
+        if (!ps) { showError(`Unsupported EPSG:${epsg}. Add a proj4 string to projStr().`); return; }
+        proj4.defs(`EPSG:${epsg}`, ps);
+      }
 
-    map.addControl(new MapboxOverlay({ layers: [layer] }));
+      const map = new maplibregl.Map({
+        container: mapDiv,
+        style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+        center: [0, 0],
+        zoom: 1,
+      });
+      currentMap = map;
+      await new Promise((r) => map.on("load", r));
+      if (seq !== loadSeq) { try { map.remove(); } catch { /* ignore */ } return; }
 
-    // Fit to COG bounds in WGS84.
-    let bounds;
-    if (isGeographic) {
-      bounds = [[mainBbox[0], mainBbox[1]], [mainBbox[2], mainBbox[3]]];
-    } else {
-      const toWGS = (x, y) => proj4(`EPSG:${epsg}`, "EPSG:4326", [x, y]);
-      const [w, s] = toWGS(mainBbox[0], mainBbox[1]);
-      const [e, n] = toWGS(mainBbox[2], mainBbox[3]);
-      bounds = [[Math.min(w, e), Math.min(s, n)], [Math.max(w, e), Math.max(s, n)]];
+      const layer = isGeographic
+        ? geographicTileLayer({ main, levels, samplesPerPixel, nodata })
+        : projectedTileLayer({ main, levels, samplesPerPixel, nodata, epsg });
+
+      map.addControl(new MapboxOverlay({ layers: [layer] }));
+
+      // Fit to COG bounds in WGS84.
+      let bounds;
+      if (isGeographic) {
+        bounds = [[mainBbox[0], mainBbox[1]], [mainBbox[2], mainBbox[3]]];
+      } else {
+        const toWGS = (x, y) => proj4(`EPSG:${epsg}`, "EPSG:4326", [x, y]);
+        const [w, s] = toWGS(mainBbox[0], mainBbox[1]);
+        const [e, n] = toWGS(mainBbox[2], mainBbox[3]);
+        bounds = [[Math.min(w, e), Math.min(s, n)], [Math.max(w, e), Math.max(s, n)]];
+      }
+      map.fitBounds(bounds, { padding: 20, duration: 0 });
+      status.remove();
+    } catch (e) {
+      if (seq === loadSeq) showError(e?.message ?? String(e));
     }
-    map.fitBounds(bounds, { padding: 20, duration: 0 });
-    status.remove();
-  } catch (e) {
-    fail(e?.message ?? String(e));
+  }
+
+  ready = true;
+  if (pendingUrl) {
+    loadCog(pendingUrl);
+  } else if (!listen) {
+    showError("cog-viewer: provide 'url' or 'listen'.");
   }
 
   return () => {
-    if (map) map.remove();
+    if (onEvent) window.removeEventListener(listen, onEvent);
+    if (currentMap) { try { currentMap.remove(); } catch { /* ignore */ } }
     el.replaceChildren();
   };
 }
