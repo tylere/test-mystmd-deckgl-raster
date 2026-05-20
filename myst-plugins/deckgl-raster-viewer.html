@@ -57,7 +57,7 @@
       // Main-thread decoder pool — workers can't be spawned in a data: iframe.
       const mainThreadPool = new DecoderPool({});
 
-      const cogUrl = "__COG_URL__";
+      const cogUrl = __COG_URL__;
       log(`Probing COG: ${cogUrl}`);
 
       // Inspect the COG to decide which rendering path to use.
