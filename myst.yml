@@ -1,0 +1,15 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: 3a020339-09c7-42ab-9c02-707dc9f392a7
+  # title:
+  # description:
+  # keywords: []
+  # authors: []
+  github: https://github.com/tylere/test-mystmd-deckgl-raster
+  # To autogenerate a Table of Contents, run "myst init --write-toc"
+site:
+  template: book-theme
+  # options:
+  #   favicon: favicon.ico
+  #   logo: site_logo.png

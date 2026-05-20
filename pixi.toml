@@ -1,0 +1,11 @@
+[workspace]
+authors = ["Tyler Erickson <92862+tylere@users.noreply.github.com>"]
+channels = ["conda-forge"]
+name = "test-mystmd-deckgl-raster"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+mystmd = ">=1.9.0,<2"
