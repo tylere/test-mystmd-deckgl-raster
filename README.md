@@ -2,12 +2,13 @@
 
 Render Cloud-Optimized GeoTIFFs (COGs) inline in a [MyST Markdown](https://mystmd.org) document using [anywidget](https://anywidget.dev/) modules backed by [deck.gl](https://deck.gl), [MapLibre GL](https://maplibre.org), [geotiff.js](https://geotiffjs.github.io/), and [proj4](http://proj4js.org/).
 
-Two small widgets live under [widgets/](widgets/):
+Three small widgets live under [widgets/](widgets/):
 
 - **[widgets/cog-viewer.mjs](widgets/cog-viewer.mjs)** — renders a single COG into a deck.gl + MapLibre map.
 - **[widgets/cog-selector.mjs](widgets/cog-selector.mjs)** — a `<select>` dropdown that broadcasts the chosen COG URL to subscribed viewers.
+- **[widgets/cog-zoom-slider.mjs](widgets/cog-zoom-slider.mjs)** — an `<input type="range">` that drives a viewer's zoom and reflects the map's zoom back (bidirectional).
 
-Both are loaded via mystmd's built-in `{anywidget}` directive — no custom MyST plugin.
+All are loaded via mystmd's built-in `{anywidget}` directive — no custom MyST plugin.
 
 ## Usage
 
@@ -22,7 +23,7 @@ Both are loaded via mystmd's built-in `{anywidget}` directive — no custom MyST
 ```
 ````
 
-### Linked selector + viewer
+### Linked selector + zoom slider + viewer
 
 ````markdown
 ```{anywidget} ./widgets/cog-selector.mjs
@@ -36,15 +37,20 @@ Both are loaded via mystmd's built-in `{anywidget}` directive — no custom MyST
 }
 ```
 
+```{anywidget} ./widgets/cog-zoom-slider.mjs
+{ "label": "Zoom:", "event": "cog-zoom-change", "min": 0, "max": 22, "step": 0.5 }
+```
+
 ```{anywidget} ./widgets/cog-viewer.mjs
 {
   "listen": "cog-url-change",
+  "zoomListen": "cog-zoom-change",
   "height": 600
 }
 ```
 ````
 
-The selector dispatches a `window` `CustomEvent` named by `event` (default `cog-url-change`). Any viewer with a matching `listen` value reloads when the dropdown changes.
+The selector dispatches a `window` `CustomEvent` named by `event` (default `cog-url-change`). Any viewer with a matching `listen` value reloads when the dropdown changes. The zoom slider is bidirectional: dragging it sets the map's zoom; the map broadcasts back on `zoomend` so the slider always reflects the current zoom (including post-`fitBounds`).
 
 ### Widget parameters
 
@@ -54,6 +60,7 @@ The selector dispatches a `window` `CustomEvent` named by `event` (default `cog-
 |---|---|---|---|
 | `url` | `string` | – | COG URL to load immediately. |
 | `listen` | `string` | – | Event name to subscribe to. Reloads the map on each event. |
+| `zoomListen` | `string` | – | Event name to subscribe to for zoom updates. Also broadcasts the map's current zoom on this event whenever it changes. |
 | `height` | `number` | `500` | Map height in pixels. |
 
 At least one of `url` and `listen` must be set. They can both be set — `url` loads immediately, then any later event replaces it.
@@ -66,6 +73,19 @@ At least one of `url` and `listen` must be set. They can both be set — `url` l
 | `event` | `string` | `"cog-url-change"` | Name of the `CustomEvent` to dispatch. |
 | `label` | `string` | `"COG:"` | Label shown next to the `<select>`. |
 | `initial` | `number \| string \| null` | `0` | Initially-selected option (index or URL). Pass `null` to skip the initial broadcast. |
+
+`cog-zoom-slider.mjs`:
+
+| Param | Type | Default | Meaning |
+|---|---|---|---|
+| `min` | `number` | `0` | Minimum zoom value. |
+| `max` | `number` | `22` | Maximum zoom value. |
+| `step` | `number` | `0.5` | Slider increment. |
+| `value` | `number \| null` | `null` | Initial zoom. If set, broadcasts once on mount; otherwise the slider stays inert until either the user moves it or the viewer broadcasts a zoom from `fitBounds`. |
+| `event` | `string` | `"cog-zoom-change"` | Name of the `CustomEvent` to dispatch and listen on. |
+| `label` | `string` | `"Zoom:"` | Label shown next to the slider. |
+
+Event payload for the zoom bus: `detail: { zoom: number, source: "slider" \| "map" }`. The `source` field distinguishes who originated the change so neither side rebroadcasts an echo.
 
 ## How it works
 
@@ -179,6 +199,7 @@ The workflow sets `BASE_URL: /test-mystmd-deckgl-raster` so internal links work 
 | [article.md](article.md) | Test article exercising both widgets. |
 | [widgets/cog-viewer.mjs](widgets/cog-viewer.mjs) | Map widget. Loads a COG and renders it. |
 | [widgets/cog-selector.mjs](widgets/cog-selector.mjs) | Dropdown widget. Broadcasts the chosen URL. |
+| [widgets/cog-zoom-slider.mjs](widgets/cog-zoom-slider.mjs) | Bidirectional zoom slider. |
 | [pixi.toml](pixi.toml) | Pixi environment with mystmd. |
 | [.github/workflows/deploy.yml](.github/workflows/deploy.yml) | GitHub Pages deployment. |
 | [docs/anywidget-experiment.md](docs/anywidget-experiment.md) | Follow-up tracking notes. |

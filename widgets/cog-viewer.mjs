@@ -249,6 +249,7 @@ async function render({ model, el }) {
   const initialUrl = model.get("url");
   const height = Number(model.get("height")) || 500;
   const listen = model.get("listen") ?? null;
+  const zoomListen = model.get("zoomListen") ?? null;
 
   // Subscribe synchronously — before any `await` — so we don't miss a live
   // event from a sibling selector. Events that arrive during async init are
@@ -270,6 +271,31 @@ async function render({ model, el }) {
       else pendingUrl = url;
     };
     window.addEventListener(listen, onEvent);
+  }
+
+  // Hoisted because the synchronous zoomListen handler below references them
+  // before the rest of render() (after the awaits) initializes them.
+  let currentMap = null;
+  let loadSeq = 0;
+
+  // Same pattern as `listen`, for zoom: subscribe synchronously, buffer events
+  // that arrive before the map exists, and apply them once a map is around.
+  // Map-sourced events are ignored (we set them, no need to re-apply).
+  let pendingZoom = null;
+  if (zoomListen) {
+    const stashed = window.__cogZoomLatest?.[zoomListen];
+    if (typeof stashed === "number") pendingZoom = stashed;
+  }
+  let onZoomEvent = null;
+  if (zoomListen) {
+    onZoomEvent = (e) => {
+      const detail = e?.detail;
+      if (!detail || typeof detail.zoom !== "number") return;
+      if (detail.source === "map") return; // our own outbound, ignore
+      if (currentMap) currentMap.setZoom(detail.zoom);
+      else pendingZoom = detail.zoom;
+    };
+    window.addEventListener(zoomListen, onZoomEvent);
   }
 
   // Container + status banner inside the shadow root.
@@ -339,9 +365,8 @@ async function render({ model, el }) {
     urlBadge.style.display = "block";
   };
 
-  let currentMap = null;
-  // Monotonic counter so a slow-loading old request can't stomp on a newer one.
-  let loadSeq = 0;
+  // `currentMap` and `loadSeq` are hoisted higher up; this comment used to
+  // declare them, kept as anchor for the loadCog helper that uses them.
 
   async function loadCog(url) {
     const seq = ++loadSeq;
@@ -382,6 +407,18 @@ async function render({ model, el }) {
       await new Promise((r) => map.on("load", r));
       if (seq !== loadSeq) { try { map.remove(); } catch { /* ignore */ } return; }
 
+      // Attach the zoom broadcaster BEFORE fitBounds. fitBounds({duration:0})
+      // fires zoomend synchronously inside the call, so if we attached this
+      // after fitBounds the slider would never hear about the new map's zoom.
+      if (zoomListen) {
+        map.on("zoomend", () => {
+          const z = map.getZoom();
+          if (!window.__cogZoomLatest) window.__cogZoomLatest = {};
+          window.__cogZoomLatest[zoomListen] = z;
+          window.dispatchEvent(new CustomEvent(zoomListen, { detail: { zoom: z, source: "map" } }));
+        });
+      }
+
       const layer = isGeographic
         ? geographicTileLayer({ main, levels, samplesPerPixel, nodata })
         : projectedTileLayer({ main, levels, samplesPerPixel, nodata, epsg });
@@ -399,6 +436,16 @@ async function render({ model, el }) {
         bounds = [[Math.min(w, e), Math.min(s, n)], [Math.max(w, e), Math.max(s, n)]];
       }
       map.fitBounds(bounds, { padding: 20, duration: 0 });
+
+      // If the slider broadcast a zoom (either an initial `value` or a user
+      // drag during async init), apply it now so the slider's value overrides
+      // the fit-bounds default. Consume the buffer so a later COG switch
+      // doesn't reuse a stale value.
+      if (pendingZoom != null) {
+        map.setZoom(pendingZoom);
+        pendingZoom = null;
+      }
+
       status.remove();
     } catch (e) {
       if (seq === loadSeq) showError(e?.message ?? String(e));
@@ -414,6 +461,7 @@ async function render({ model, el }) {
 
   return () => {
     if (onEvent) window.removeEventListener(listen, onEvent);
+    if (onZoomEvent) window.removeEventListener(zoomListen, onZoomEvent);
     if (currentMap) { try { currentMap.remove(); } catch { /* ignore */ } }
     el.replaceChildren();
   };

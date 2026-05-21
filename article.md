@@ -14,9 +14,20 @@
 }
 ```
 
+```{anywidget} ./widgets/cog-zoom-slider.mjs
+{
+  "label": "Zoom:",
+  "event": "cog-zoom-change",
+  "min": 0,
+  "max": 22,
+  "step": 0.5
+}
+```
+
 ```{anywidget} ./widgets/cog-viewer.mjs
 {
   "listen": "cog-url-change",
+  "zoomListen": "cog-zoom-change",
   "height": 600
 }
 ```
