@@ -10,14 +10,13 @@
 // overview selection, and tile fetching all happen inside the layer.
 //
 // One non-obvious bit: @developmentseed/geotiff's default DecoderPool spawns
-// Workers from esm.sh URLs, which browsers reject as cross-origin. We pass an
-// explicit DecoderPool({ size: 0 }) so decoding runs on the main thread.
-//
-// TODO: restore worker-pool decoding via a same-origin blob URL — fetch the
-// esm.sh worker source as text, wrap in `new Blob([src], { type: ... })`, and
-// pass `createWorker: () => new Worker(URL.createObjectURL(blob), { type:
-// "module" })`. Skipped here to keep the change minimal; worth doing if
-// main-thread decode causes visible jank on larger/compressed COGs.
+// Workers from esm.sh URLs, and browsers reject `new Worker(crossOriginUrl)`.
+// Work around by building a same-origin blob URL whose only contents are an
+// `import` of the real esm.sh worker. The Worker constructor accepts the
+// blob URL (same-origin); the inner import is a CORS module fetch that
+// esm.sh allows. Root-relative imports inside the worker source resolve
+// against the worker module's own URL (esm.sh), so its dependency tree
+// follows transparently.
 
 import maplibregl from "https://esm.sh/maplibre-gl@4.7.1";
 import { MapboxOverlay } from "https://esm.sh/@deck.gl/mapbox@9.3.0";
@@ -25,9 +24,16 @@ import { COGLayer } from "https://esm.sh/@developmentseed/deck.gl-geotiff@0.7.0"
 import { DecoderPool } from "https://esm.sh/@developmentseed/geotiff@0.7.0";
 
 const MAPLIBRE_CSS_URL = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css";
+const GEOTIFF_WORKER_URL = "https://esm.sh/@developmentseed/geotiff@0.7.0/pool/worker";
 
-// Shared across widget instances; main-thread decode, no workers.
-const decoderPool = new DecoderPool({ size: 0 });
+const workerBootstrapBlobUrl = URL.createObjectURL(
+  new Blob([`import "${GEOTIFF_WORKER_URL}";`], { type: "application/javascript" }),
+);
+
+// Shared across widget instances.
+const decoderPool = new DecoderPool({
+  createWorker: () => new Worker(workerBootstrapBlobUrl, { type: "module" }),
+});
 
 async function ensureMaplibreCSS(el) {
   if (!ensureMaplibreCSS._cssText) {
