@@ -306,12 +306,46 @@ async function render({ model, el }) {
     status.textContent = String(msg);
   };
 
+  // Badge in the top-right showing the URL of the COG currently loaded.
+  // Long URLs are truncated with ellipsis; full URL is in the link title.
+  const urlBadge = document.createElement("div");
+  Object.assign(urlBadge.style, {
+    position: "absolute",
+    top: "8px",
+    right: "8px",
+    zIndex: "10",
+    font: "11px/1.3 system-ui, sans-serif",
+    background: "rgba(255,255,255,0.85)",
+    color: "#333",
+    padding: "3px 6px",
+    borderRadius: "3px",
+    maxWidth: "60%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    display: "none",
+  });
+  el.appendChild(urlBadge);
+  const showUrlBadge = (url) => {
+    urlBadge.replaceChildren();
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.title = url;
+    a.textContent = url;
+    Object.assign(a.style, { color: "inherit", textDecoration: "none" });
+    urlBadge.appendChild(a);
+    urlBadge.style.display = "block";
+  };
+
   let currentMap = null;
   // Monotonic counter so a slow-loading old request can't stomp on a newer one.
   let loadSeq = 0;
 
   async function loadCog(url) {
     const seq = ++loadSeq;
+    showUrlBadge(url);
     // Tear down any previous map in the same container.
     if (currentMap) {
       try { currentMap.remove(); } catch { /* ignore */ }
