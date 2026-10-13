@@ -20,7 +20,7 @@
 
 import maplibregl from "https://esm.sh/maplibre-gl@4.7.1";
 import { MapboxOverlay } from "https://esm.sh/@deck.gl/mapbox@9.3.0";
-import { COGLayer } from "https://esm.sh/@developmentseed/deck.gl-geotiff@0.7.0";
+import { COGLayer } from "https://esm.sh/@developmentseed/deck.gl-geotiff@0.7.0?deps=@deck.gl/core@9.3.11,@deck.gl/layers@9.3.11,@deck.gl/mesh-layers@9.3.11,@deck.gl/geo-layers@9.3.11";
 import { DecoderPool } from "https://esm.sh/@developmentseed/geotiff@0.7.0";
 
 const MAPLIBRE_CSS_URL = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css";
